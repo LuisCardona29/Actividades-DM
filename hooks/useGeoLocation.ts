@@ -2,7 +2,7 @@ import * as Location from 'expo-location';
 import { useCallback, useEffect, useState } from 'react';
 import { Linking } from 'react-native';
 
-import type { GeoCoords } from '@/contexts/GeoPhotosContext';
+import type { GeoCoords } from '@/types/geo';
 
 export type PermissionRequestState = 'undetermined' | 'granted' | 'denied' | 'blocked';
 

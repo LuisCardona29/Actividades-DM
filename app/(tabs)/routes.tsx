@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
 
 import { useGeoLocation } from '@/hooks/useGeoLocation';
+import { usePhotos } from '@/hooks/usePhotos';
 
 type RouteInfo = {
   id: string;
@@ -64,6 +65,7 @@ export default function RoutesScreen() {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const geoLocation = useGeoLocation();
+  const savedPhotos = usePhotos();
   const mapRegion: Region = geoLocation.coords
     ? {
         latitude: geoLocation.coords.latitude,
@@ -134,8 +136,20 @@ export default function RoutesScreen() {
                 pinColor={orderMarkerColors[order.status]}
               />
             ))}
+            {savedPhotos.photosWithLocation.map((photo) => {
+              if (photo.latitude === null || photo.longitude === null) return null;
+              return (
+                <Marker
+                  key={`photo-${photo.id}`}
+                  coordinate={{ latitude: photo.latitude, longitude: photo.longitude }}
+                  title={photo.note || 'Foto GeoCam'}
+                  description={photo.albumName ?? 'Foto guardada en el dispositivo'}
+                  pinColor="#2563eb"
+                />
+              );
+            })}
           </MapView>
-          <Text style={styles.mapCaption}>Recorrido principal y paradas de RouteGo</Text>
+          <Text style={styles.mapCaption}>Recorrido, pedidos y {savedPhotos.photosWithLocation.length} fotos ubicadas</Text>
         </View>
 
         <View style={styles.activityCard}>

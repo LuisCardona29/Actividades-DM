@@ -42,6 +42,13 @@ export default function TabsLayout() {
           tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>{'🎫'}</Text>,
         }}
       />
+      <Tabs.Screen
+        name="geocam"
+        options={{
+          title: 'GeoCam',
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>{'📷'}</Text>,
+        }}
+      />
     </Tabs>
   );
 }

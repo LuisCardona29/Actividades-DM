@@ -1,4 +1,4 @@
-# 🤖 AI-LOG — Semana 6
+# 🤖 AI-LOG — Semana 6 y Semana 7
 
 Bitácora del trabajo realizado en **RouteGo** con apoyo de herramientas de IA: qué se hizo, qué se verificó y qué quedó pendiente.
 
@@ -85,3 +85,36 @@ La evidencia está en `assets/screenshots/` y se muestra en el `README.md`.
 ## 📌 Resultado
 
 La app queda lista para demostrar navegación, GPS contextual, permisos nativos con sus tres estados y manejo de errores desde la interfaz, con hooks reutilizables y sin fugas de suscripciones.
+
+---
+
+## Semana 7 - GeoCam persistente
+
+### Prompts y trabajo
+
+- Se solicito adaptar GeoCam al flujo offline-first de la guia: SQLite con Drizzle, migraciones, repositorios, CRUD de fotos/albumes, filtros y archivos permanentes.
+- Se conservaron los permisos y el mapa de la Semana 6; la galeria persistente se integro en una pestaña GeoCam y sus fotos geolocalizadas se muestran en Rutas.
+
+### Implementacion
+
+- Se instalaron `expo-sqlite`, `expo-file-system`, `drizzle-orm`, `drizzle-kit` y `babel-plugin-inline-import` compatibles con el proyecto Expo SDK 54.
+- Se generaron `drizzle/0000_*.sql` (tabla `photos`) y `drizzle/0001_*.sql` (albums, relacion opcional, nota y favorito) con `drizzle-kit generate`; no se editaron los SQL generados.
+- Se separo el acceso a datos en repositorios y `hooks/usePhotos.ts`, con `useLiveQuery`, busqueda, filtro por album y favoritas.
+- Las fotos se copian desde cache a `Paths.document/geocam-photos/`. El borrado de una foto elimina tanto el registro como su archivo.
+- Se agregaron edicion de nota, favorito y album; creacion/renombre/borrado de albumes; y marcadores de fotos con coordenadas en el mapa.
+- `useShake` puede vaciar fotos y archivos solo cuando la persona activa expresamente la opcion; viene desactivada por defecto.
+
+### Error detectado y correccion
+
+- El snapshot de Drizzle conserva `onDelete: 'set null'`, pero Drizzle Kit 0.31.11 genero el `ALTER TABLE` de SQLite sin esa clausula. No se altero manualmente la migracion. Se agrego un trigger `IF NOT EXISTS` durante el arranque que pone `album_id` en `NULL` antes de borrar el album.
+- Se usa el API actual de `expo-file-system` (`File`, `Directory`, `Paths`), no `FileSystem.copyAsync` de la API legacy.
+
+### Verificacion
+
+- `npx drizzle-kit generate`: genero ambas migraciones.
+- `npx tsc --noEmit`: verificado despues de integrar base de datos, hooks, pantallas y rutas.
+- `npm run lint`: finaliza sin errores ni advertencias despues de corregir dependencias de hooks.
+- `npx expo export --platform android --output-dir .expo/validation-export`: Metro compilo 1,172 modulos y genero el bundle Android.
+- `npm run db:generate`: comprobo que el esquema coincide con las migraciones versionadas.
+- Las migraciones y el trigger de borrado de album se probaron con SQLite local; el borrado conserva fotos y deja `album_id` en `NULL`.
+- Prueba fisica de capturar tres fotos, cerrar/reabrir Expo Go, modo avion y validar marcadores: pendiente. El GIF de evidencia no se simulo; debe grabarse en el telefono como `assets/screenshots/geocam-offline-flow.gif`.

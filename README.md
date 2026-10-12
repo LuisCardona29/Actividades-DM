@@ -1,4 +1,4 @@
-# 🚌 RouteGo — Semana 6
+# 🚌 RouteGo — Semana 7
 
 App móvil construida con **Expo SDK 54** y **Expo Router** para consultar rutas de transporte, ver un mapa con paradas y pedidos en curso, y demostrar el manejo correcto de **permisos nativos** (cámara, ubicación) y del **acelerómetro** mediante *custom hooks* tipados.
 
@@ -11,14 +11,15 @@ App móvil construida con **Expo SDK 54** y **Expo Router** para consultar rutas
 ## 📑 Tabla de contenidos
 
 1. [Características](#-características)
-2. [Custom hooks](#-custom-hooks)
-3. [Manejo de permisos](#-manejo-de-permisos)
-4. [Evidencia visual](#-evidencia-visual)
-5. [Checklist de verificación](#-checklist-de-verificación)
-6. [Estructura del proyecto](#-estructura-del-proyecto)
-7. [Cómo ejecutar](#-cómo-ejecutar)
-8. [Tecnologías](#-tecnologías)
-9. [Documentación de IA](#-documentación-de-ia)
+2. [GeoCam offline-first](#geocam-offline-first)
+3. [Custom hooks](#-custom-hooks)
+4. [Manejo de permisos](#-manejo-de-permisos)
+5. [Evidencia visual](#-evidencia-visual)
+6. [Checklist de verificación](#-checklist-de-verificación)
+7. [Estructura del proyecto](#-estructura-del-proyecto)
+8. [Cómo ejecutar](#-cómo-ejecutar)
+9. [Tecnologías](#-tecnologías)
+10. [Documentación de IA](#-documentación-de-ia)
 
 ---
 
@@ -29,6 +30,9 @@ App móvil construida con **Expo SDK 54** y **Expo Router** para consultar rutas
 | **Inicio** | Muestra el estado del servicio y los shuttles en ruta con su ETA y estado (*En tránsito*, *Listo*, *A tiempo*). |
 | **Rutas** | Buscador de corredores, listado de líneas (*Operativa* / *Mantenimiento*), mapa nativo con calles, paradas y recorrido destacado, y botón **Ver detalles** hacia `student/[id]`. |
 | **Mi pase** | Pase digital, panel de **permisos del dispositivo**, vista previa de cámara y **sensor de movimiento** (contador de sacudidas). |
+| **GeoCam** | Captura o importa fotos, conserva los archivos en Documentos y guarda metadatos, coordenadas, notas, favoritos y álbumes en SQLite. |
+
+La galería está disponible sin conexión: captura/importación, edición de notas, favoritos, asignación y gestión de álbumes, búsqueda y filtros reactivos.
 
 ### Mapa y pedidos en curso
 
@@ -45,6 +49,65 @@ App móvil construida con **Expo SDK 54** y **Expo Router** para consultar rutas
 - Si el permiso está bloqueado aparece **Abrir Ajustes**.
 - La cámara sigue funcionando aunque la ubicación sea rechazada.
 - GPS y acelerómetro limpian sus suscripciones al salir de la pantalla.
+
+## GeoCam offline-first
+
+Las escrituras se guardan primero en el dispositivo. La interfaz lee consultas reactivas desde SQLite; no depende de conexión a internet.
+
+### Modelo de datos
+
+```mermaid
+erDiagram
+    ALBUMS ||--o{ PHOTOS : contains
+    ALBUMS {
+        integer id PK
+        text name UK
+        integer created_at
+    }
+    PHOTOS {
+        integer id PK
+        text uri
+        real latitude
+        real longitude
+        real accuracy
+        text source
+        integer album_id FK
+        text note
+        boolean favorite
+        integer created_at
+    }
+```
+
+Las fotos se copian a `Paths.document/geocam-photos/`; SQLite almacena su URI, coordenadas opcionales, origen, nota, favorito y album. Al borrar una foto se borra su archivo. Al borrar un album las fotos se conservan con `album_id = NULL`.
+
+### Flujo
+
+```text
+Camara / selector de imagen
+                -> copia del archivo a Documentos
+                -> repositorio de fotos
+                -> SQLite + useLiveQuery
+                -> galeria GeoCam / marcadores del mapa
+```
+
+GeoCam permite crear, renombrar y eliminar albumes; buscar por nota; filtrar por album y favoritas; editar metadatos; y borrar fotos. La opcion **Vaciar biblioteca al agitar** es opt-in y viene apagada.
+
+### Migraciones
+
+- `drizzle/0000_*.sql`: tabla inicial `photos`.
+- `drizzle/0001_*.sql`: tabla `albums`, album opcional en fotos, nota y favorito.
+- Los archivos y snapshots de `drizzle/` se generan con Drizzle Kit y deben versionarse. No edites una migracion ya generada.
+- La segunda migracion generada registra `ON DELETE SET NULL` en el snapshot, pero Drizzle Kit no lo incluyo en el `ALTER TABLE` SQL de SQLite. El arranque instala un trigger idempotente que preserva ese comportamiento.
+
+Para generar una migracion despues de cambiar el esquema:
+
+```bash
+npm run db:generate
+```
+
+### GIF del flujo
+
+El GIF debe grabarse en un dispositivo real para mostrar captura/importacion, cierre y reapertura de Expo Go, y persistencia de la foto. Guarda la grabacion como `assets/screenshots/geocam-offline-flow.gif` y anade aqui la imagen; no se incluye una animacion simulada como evidencia de persistencia.
 
 ---
 
@@ -138,6 +201,9 @@ Usuario toca "Activar GPS"  ──►  Diálogo nativo de Android
 - [x] `hooks/useGeoLocation.ts`, `hooks/useCamera.ts` y `hooks/useShake.ts` presentes.
 - [x] README con capturas de los tres estados de permiso.
 - [x] `AI-LOG.md` de la Semana 6 en la raíz.
+- [x] GeoCam usa SQLite/Drizzle, dos migraciones generadas, repositorios y fotos en almacenamiento permanente.
+- [x] Albumes relacionados, nota, favorito, filtros reactivos y borrado de registros/archivos implementados.
+- [ ] Probar en el telefono que las fotos sobreviven al cierre de Expo Go y grabar `assets/screenshots/geocam-offline-flow.gif`.
 
 ---
 
@@ -152,6 +218,13 @@ Semana-6-DM/
 │   ├── useGeoLocation.ts   # GPS + permiso de ubicación
 │   ├── useCamera.ts        # Cámara + permiso
 │   └── useShake.ts         # Acelerómetro / sacudidas
+├── db/
+│   ├── schema.ts           # photos y albums
+│   ├── client.ts           # SQLite + Drizzle
+│   └── repositories/       # Acceso a datos
+├── drizzle/                # SQL y snapshots generados
+├── services/photoFiles.ts  # Archivos permanentes
+├── hooks/usePhotos.ts      # Consultas y acciones de GeoCam
 ├── assets/
 │   ├── screenshots/        # Capturas de la entrega (1.png – 10.png)
 │   └── permission-state/   # granted.svg · denied.svg · blocked.svg
@@ -163,12 +236,14 @@ Semana-6-DM/
 
 ```bash
 npm install
-npx expo start
+npx expo start -c
 ```
 
 1. Instala **Expo Go** compatible con **SDK 54** en un dispositivo físico.
 2. Escanea el código QR que aparece en la terminal.
-3. Abre **Rutas** para probar el GPS y **Mi pase** para probar cámara, ubicación y acelerómetro.
+3. Abre **GeoCam** para capturar/importar fotos, asignar álbum y nota, o marcar favoritas.
+4. Cierra Expo Go por completo y vuelve a abrirlo; las fotos deben seguir en la biblioteca y sus marcadores en **Rutas**.
+5. Prueba modo avión, búsqueda, filtros y borrado de fotos/álbumes.
 
 > ⚠️ GPS, cámara y acelerómetro requieren **dispositivo físico**; los emuladores no los reproducen de forma fiable.
 
@@ -182,6 +257,10 @@ npx expo start
 - Expo Camera
 - Expo Location
 - Expo Sensors
+- Expo SQLite
+- Drizzle ORM y Drizzle Kit
+- Expo FileSystem
+- Expo ImagePicker
 - TypeScript (modo estricto)
 
 ---
