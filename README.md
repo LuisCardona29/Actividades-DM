@@ -4,7 +4,7 @@ App móvil construida con **Expo SDK 54** y **Expo Router** para consultar rutas
 
 > Los datos de demostración del mapa están ubicados en **Riohacha, La Guajira (Colombia)**.
 
-**Repositorio:** https://github.com/LuisCardona29/Semana-6-DM
+**Repositorio:** https://github.com/LuisCardona29/Actividades-DM
 
 ---
 
@@ -91,6 +91,12 @@ Camara / selector de imagen
 ```
 
 GeoCam permite crear, renombrar y eliminar albumes; buscar por nota; filtrar por album y favoritas; editar metadatos; y borrar fotos. La opcion **Vaciar biblioteca al agitar** es opt-in y viene apagada.
+
+### Capturas de GeoCam
+
+![GeoCam con GPS activo, captura y gestión de álbumes](assets/screenshots/11.png)
+
+![Biblioteca GeoCam con fotos guardadas, filtros y sensor de movimiento](assets/screenshots/12.png)
 
 ### Migraciones
 
@@ -226,7 +232,7 @@ Semana-6-DM/
 ├── services/photoFiles.ts  # Archivos permanentes
 ├── hooks/usePhotos.ts      # Consultas y acciones de GeoCam
 ├── assets/
-│   ├── screenshots/        # Capturas de la entrega (1.png – 10.png)
+│   ├── screenshots/        # Capturas de la entrega (1.png – 12.png)
 │   └── permission-state/   # granted.svg · denied.svg · blocked.svg
 ├── AI-LOG.md               # Bitácora de uso de IA (Semana 6)
 └── README.md

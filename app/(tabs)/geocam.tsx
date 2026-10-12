@@ -136,7 +136,7 @@ export default function GeoCamScreen() {
           <Text style={styles.eyebrow}>GeoCam offline</Text>
           <Text style={styles.title}>Fotos con lugar</Text>
         </View>
-        <Text style={styles.total}>{photos.photos.length} fotos</Text>
+        <Text style={styles.total}>{photos.photos.length} {photos.photos.length === 1 ? 'foto' : 'fotos'}</Text>
       </View>
 
       <View style={styles.cameraCard}>
