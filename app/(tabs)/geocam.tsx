@@ -1,9 +1,11 @@
+import { Ionicons } from '@expo/vector-icons';
 import { CameraView } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
+import { useAuth } from '@/context/AuthContext';
 import { useCamera } from '@/hooks/useCamera';
 import { useGeoLocation } from '@/hooks/useGeoLocation';
 import { usePhotos } from '@/hooks/usePhotos';
@@ -11,6 +13,7 @@ import { useShake } from '@/hooks/useShake';
 
 export default function GeoCamScreen() {
   const router = useRouter();
+  const { session } = useAuth();
   const cameraRef = useRef<CameraView>(null);
   const camera = useCamera();
   const geoLocation = useGeoLocation();
@@ -23,8 +26,9 @@ export default function GeoCamScreen() {
   const [shakeToClear, setShakeToClear] = useState(false);
   const [shakeCount, setShakeCount] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const photos = usePhotos({ search: query, albumId: albumFilterId, favoritesOnly });
+  const photos = usePhotos(session?.user.id ?? null, { search: query, albumId: albumFilterId, favoritesOnly });
   const clearPhotos = photos.clearAll;
 
   const handleShake = useCallback(() => {
@@ -123,10 +127,29 @@ export default function GeoCamScreen() {
   };
 
   const confirmClearPhotos = (): void => {
-    Alert.alert('Eliminar todas las fotos', 'Se borraran los registros y sus archivos del dispositivo.', [
+    Alert.alert('Eliminar todas las fotos', 'Se borraran los registros y archivos locales, y tambien las copias respaldadas. Necesitas conexion para borrar copias de la nube.', [
       { text: 'Cancelar', style: 'cancel' },
-      { text: 'Eliminar todo', style: 'destructive', onPress: () => { void photos.clearAll(); } },
+      { text: 'Eliminar todo', style: 'destructive', onPress: () => { void photos.clearAll().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'No se pudo vaciar la galeria.')); } },
     ]);
+  };
+
+  const syncPendingPhotos = async (): Promise<void> => {
+    if (syncBusy) return;
+    setSyncBusy(true);
+    try {
+      const result = await photos.syncPending();
+      if (result.total === 0) {
+        Alert.alert('Todo sincronizado', 'No hay fotos pendientes.');
+      } else if (result.failed === 0) {
+        Alert.alert('Respaldo completado', `${result.synced} fotos subidas.`);
+      } else {
+        Alert.alert('Respaldo parcial', `${result.synced} subidas; ${result.failed} pendientes.\n${result.failures.slice(0, 2).join('\n')}`);
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'No se pudo sincronizar la galeria.');
+    } finally {
+      setSyncBusy(false);
+    }
   };
 
   return (
@@ -211,7 +234,13 @@ export default function GeoCamScreen() {
       <View style={styles.panel}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Biblioteca</Text>
-          <Pressable onPress={confirmClearPhotos}><Text style={styles.deleteAction}>Vaciar</Text></Pressable>
+          <View style={styles.libraryActions}>
+            <Pressable style={styles.syncButton} onPress={() => { void syncPendingPhotos(); }} disabled={syncBusy}>
+              {syncBusy ? <Text style={styles.syncLabel}>{photos.syncProgress?.completed ?? 0}/{photos.syncProgress?.total ?? 0}</Text> : <Ionicons name="cloud-upload-outline" size={17} color="#c2410c" />}
+              <Text style={styles.syncLabel}>{syncBusy ? 'Subiendo' : 'Sincronizar'}</Text>
+            </Pressable>
+            <Pressable onPress={confirmClearPhotos}><Text style={styles.deleteAction}>Vaciar</Text></Pressable>
+          </View>
         </View>
         <TextInput value={query} onChangeText={setQuery} placeholder="Buscar en notas" placeholderTextColor="#8b95a9" style={styles.input} />
         <View style={styles.filterHeader}>
@@ -238,6 +267,14 @@ export default function GeoCamScreen() {
               <Image source={{ uri: photo.uri }} style={styles.thumbnail} />
               <Text numberOfLines={1} style={styles.photoNote}>{photo.note || 'Sin nota'}</Text>
               <Text style={styles.photoMeta}>{photo.favorite ? 'Favorita' : photo.albumName ?? 'Sin album'}</Text>
+              <View style={styles.syncState}>
+                <Ionicons
+                  name={photo.syncedAt && photo.updatedAt && photo.syncedAt >= photo.updatedAt ? 'cloud-done-outline' : 'cloud-upload-outline'}
+                  size={13}
+                  color={photo.syncedAt && photo.updatedAt && photo.syncedAt >= photo.updatedAt ? '#16835d' : '#98a2b3'}
+                />
+                <Text style={styles.photoMeta}>{photo.syncedAt && photo.updatedAt && photo.syncedAt >= photo.updatedAt ? 'En nube' : 'Pendiente'}</Text>
+              </View>
             </Pressable>
           ))}
         </View>
@@ -284,6 +321,9 @@ const styles = StyleSheet.create({
   panel: { backgroundColor: '#fff', borderRadius: 18, gap: 12, padding: 16 },
   sectionTitle: { color: '#121a2b', fontSize: 19, fontWeight: '800' },
   sectionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  libraryActions: { alignItems: 'center', flexDirection: 'row', gap: 14 },
+  syncButton: { alignItems: 'center', flexDirection: 'row', gap: 5 },
+  syncLabel: { color: '#c2410c', fontSize: 11, fontWeight: '800' },
   albumForm: { alignItems: 'center', flexDirection: 'row', gap: 8 },
   input: { backgroundColor: '#f5f7fb', borderRadius: 11, color: '#121a2b', flex: 1, fontSize: 14, paddingHorizontal: 12, paddingVertical: 10 },
   smallButton: { backgroundColor: '#ff6b3d', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
@@ -303,6 +343,7 @@ const styles = StyleSheet.create({
   thumbnail: { aspectRatio: 1, backgroundColor: '#e4e7ec', width: '100%' },
   photoNote: { color: '#121a2b', fontSize: 12, fontWeight: '800', paddingHorizontal: 9, paddingTop: 8 },
   photoMeta: { color: '#667085', fontSize: 10, padding: 9, paddingTop: 4 },
+  syncState: { alignItems: 'center', flexDirection: 'row', gap: 2, paddingHorizontal: 7, paddingBottom: 7 },
   empty: { color: '#667085', fontSize: 13, paddingVertical: 10, textAlign: 'center' },
   shakeCopy: { flex: 1, paddingRight: 8 },
   helper: { color: '#667085', fontSize: 11, lineHeight: 16, marginTop: 4 },

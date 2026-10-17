@@ -1,0 +1,2 @@
+-- Owner columns are repaired idempotently by db/migrations.ts before Drizzle
+-- runs. This journal entry is intentionally a no-op for already migrated DBs.

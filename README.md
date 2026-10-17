@@ -1,10 +1,10 @@
-# 🚌 RouteGo — Semana 7
+# GeoCam — Respaldo seguro de fotos (Semana 8)
 
-App móvil construida con **Expo SDK 54** y **Expo Router** para consultar rutas de transporte, ver un mapa con paradas y pedidos en curso, y demostrar el manejo correcto de **permisos nativos** (cámara, ubicación) y del **acelerómetro** mediante *custom hooks* tipados.
+App móvil construida con **Expo SDK 57** y **Expo Router**. GeoCam combina una galería local disponible sin conexión con autenticación y respaldo privado de imágenes en Supabase Storage.
 
 > Los datos de demostración del mapa están ubicados en **Riohacha, La Guajira (Colombia)**.
 
-**Repositorio:** https://github.com/LuisCardona29/Actividades-DM
+**Repositorio:** https://github.com/LuisCardona29/Semana-6-DM
 
 ---
 
@@ -52,6 +52,38 @@ La galería está disponible sin conexión: captura/importación, edición de no
 
 ## GeoCam offline-first
 
+La app requiere una cuenta para entrar a las pantallas privadas. Desde **Tu nube** se pueden sincronizar pendientes, consultar fotos respaldadas y cerrar sesión. Las credenciales de sesión persisten con Expo SecureStore. Las fotos se guardan en el bucket privado `geocam`, organizadas en una carpeta con el ID del usuario; RLS restringe filas y objetos a su propietario.
+
+Para configurar el proyecto, copia `.env.example` a `.env` y agrega la URL de Supabase y una publishable key. Nunca uses una `service_role` o secret key en la app. Aplica `supabase/schema.sql` desde SQL Editor antes de sincronizar. `drizzle/0004_fair_sparrow.sql` agrega el propietario local de álbumes.
+
+La comprobación automatizada de TypeScript pasa. Falta validar el registro y login contra Supabase, persistencia tras forzar el cierre, aislamiento con una segunda cuenta y el tamaño de archivos cargados en un dispositivo conectado al proyecto real.
+
+### Diagrama local y remoto (Semana 8)
+
+```mermaid
+flowchart LR
+  A[Camara / galeria] --> B[Archivo persistente en Documents]
+  B --> C[SQLite local: photos + albums, owner_id]
+  C -->|Sync pendientes| D[Supabase Storage: bucket privado geocam / user_id / client_id]
+  C -->|Metadatos| E[Postgres public.photos, RLS por auth.uid]
+  E -->|Realtime + SELECT| F[Pestana Tu nube]
+  D -->|URL firmada| F
+```
+
+SQLite sigue siendo la fuente de verdad del dispositivo. El respaldo remoto requiere conexión; las filas y objetos remotos solo son visibles para su usuario autenticado. Al eliminar, primero se confirma la operación remota y luego se limpia el archivo y fila local.
+
+### SQL de Supabase
+
+El SQL completo e idempotente de la tabla, políticas RLS y bucket privado está en [`supabase/schema.sql`](supabase/schema.sql). Ejecútalo en el SQL Editor del proyecto antes de conectar la app. Las claves `service_role`/secret nunca se configuran en el cliente móvil.
+
+### Auditoría de credenciales
+
+- `git log --all --full-history -- .env`: sin resultados (el archivo nunca se versionó).
+- `.env` y `.env.*` están ignorados; `.env.example` contiene nombres de variables y valores de ejemplo no válidos.
+- El cliente usa únicamente `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; no hay secret key en código.
+
+La lista de pendientes y los cambios recientes en fotos se sincronizan en serie con avance, sin registrar objetos vacíos. `Tu nube` consulta la cuenta actual, obtiene URLs firmadas y escucha cambios por Realtime. El GIF real del flujo debe añadirse como `assets/screenshots/geocam-cloud-flow.gif` después de grabarlo en un dispositivo conectado al proyecto.
+
 Las escrituras se guardan primero en el dispositivo. La interfaz lee consultas reactivas desde SQLite; no depende de conexión a internet.
 
 ### Modelo de datos
@@ -98,12 +130,25 @@ GeoCam permite crear, renombrar y eliminar albumes; buscar por nota; filtrar por
 
 ![Biblioteca GeoCam con fotos guardadas, filtros y sensor de movimiento](assets/screenshots/12.png)
 
+### Autenticación y respaldo (Semana 8)
+
+La pantalla de acceso permite iniciar sesión o crear una cuenta. Las pantallas privadas requieren sesión y las credenciales de sesión se guardan con SecureStore en Android e iOS.
+
+![Pantalla de inicio de sesión y registro de GeoCam](assets/screenshots/13.png)
+
+Para habilitar autenticación y respaldo, configura `.env` a partir de `.env.example` y ejecuta [`supabase/schema.sql`](supabase/schema.sql) en el SQL Editor de tu proyecto. El esquema aplica RLS a la tabla y al bucket privado `geocam`, con acceso limitado a la carpeta del usuario. La conexión remota, el registro/login y la sincronización deben validarse con el proyecto Supabase configurado.
+
 ### Migraciones
 
 - `drizzle/0000_*.sql`: tabla inicial `photos`.
 - `drizzle/0001_*.sql`: tabla `albums`, album opcional en fotos, nota y favorito.
 - Los archivos y snapshots de `drizzle/` se generan con Drizzle Kit y deben versionarse. No edites una migracion ya generada.
 - La segunda migracion generada registra `ON DELETE SET NULL` en el snapshot, pero Drizzle Kit no lo incluyo en el `ALTER TABLE` SQL de SQLite. El arranque instala un trigger idempotente que preserva ese comportamiento.
+
+- `drizzle/0002_*.sql`: campos de sincronizacion local (`client_id`, `updated_at`, `remote_path`, `synced_at`).
+- `drizzle/0003_*.sql` y `0004_*.sql`: propietario por usuario en fotos y albumes.
+- `drizzle/0005_*.sql`: migracion de compatibilidad sin cambios; el arranque repara columnas faltantes de forma idempotente para bases actualizadas parcialmente.
+- `supabase/schema.sql`: esquema remoto, RLS y politicas Storage; requiere aplicarse en el SQL Editor del proyecto Supabase.
 
 Para generar una migracion despues de cambiar el esquema:
 
@@ -206,9 +251,11 @@ Usuario toca "Activar GPS"  ──►  Diálogo nativo de Android
 - [x] Los hooks están **tipados, sin `any`**, y los errores llegan a la UI como estado.
 - [x] `hooks/useGeoLocation.ts`, `hooks/useCamera.ts` y `hooks/useShake.ts` presentes.
 - [x] README con capturas de los tres estados de permiso.
-- [x] `AI-LOG.md` de la Semana 6 en la raíz.
+- [x] `AI-LOG.md` con la bitacora de las Semanas 6, 7 y 8 en la raiz.
 - [x] GeoCam usa SQLite/Drizzle, dos migraciones generadas, repositorios y fotos en almacenamiento permanente.
 - [x] Albumes relacionados, nota, favorito, filtros reactivos y borrado de registros/archivos implementados.
+- [x] Pantalla de autenticacion implementada; la captura esta en `assets/screenshots/13.png`.
+- [ ] Aplicar el SQL remoto y verificar registro/login, SecureStore tras cierre, RLS con segunda cuenta y carga de imagenes en Supabase.
 - [ ] Probar en el telefono que las fotos sobreviven al cierre de Expo Go y grabar `assets/screenshots/geocam-offline-flow.gif`.
 
 ---
@@ -218,7 +265,8 @@ Usuario toca "Activar GPS"  ──►  Diálogo nativo de Android
 ```
 Semana-6-DM/
 ├── app/                    # Pantallas (Expo Router)
-│   ├── (tabs)/             # Inicio · Rutas · Mi pase
+│   ├── (tabs)/             # GeoCam · Rutas · Tu nube
+│   ├── login.tsx           # Inicio de sesion y registro
 │   └── student/[id]        # Detalle de ruta
 ├── hooks/
 │   ├── useGeoLocation.ts   # GPS + permiso de ubicación
@@ -232,7 +280,7 @@ Semana-6-DM/
 ├── services/photoFiles.ts  # Archivos permanentes
 ├── hooks/usePhotos.ts      # Consultas y acciones de GeoCam
 ├── assets/
-│   ├── screenshots/        # Capturas de la entrega (1.png – 12.png)
+│   ├── screenshots/        # Capturas de la entrega (1.png – 13.png)
 │   └── permission-state/   # granted.svg · denied.svg · blocked.svg
 ├── AI-LOG.md               # Bitácora de uso de IA (Semana 6)
 └── README.md
@@ -245,7 +293,7 @@ npm install
 npx expo start -c
 ```
 
-1. Instala **Expo Go** compatible con **SDK 54** en un dispositivo físico.
+1. Instala **Expo Go** compatible con **SDK 57** en un dispositivo físico.
 2. Escanea el código QR que aparece en la terminal.
 3. Abre **GeoCam** para capturar/importar fotos, asignar álbum y nota, o marcar favoritas.
 4. Cierra Expo Go por completo y vuelve a abrirlo; las fotos deben seguir en la biblioteca y sus marcadores en **Rutas**.
@@ -257,7 +305,7 @@ npx expo start -c
 
 ## 🛠️ Tecnologías
 
-- Expo SDK 54
+- Expo SDK 57
 - Expo Router
 - React Native
 - Expo Camera

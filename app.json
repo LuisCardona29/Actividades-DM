@@ -22,7 +22,7 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -39,7 +39,19 @@
           }
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-font",
+      "expo-image",
+      "expo-status-bar",
+      "expo-web-browser",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "GeoCam usa la camara para tomar fotos y respaldarlas.",
+          "photosPermission": "GeoCam accede a tus fotos para respaldarlas en tu cuenta."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

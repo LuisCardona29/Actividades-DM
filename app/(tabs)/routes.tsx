@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
 
+import { useAuth } from '@/context/AuthContext';
 import { useGeoLocation } from '@/hooks/useGeoLocation';
 import { usePhotos } from '@/hooks/usePhotos';
 
@@ -64,8 +65,9 @@ const orderMarkerColors: Record<ActiveOrder['status'], string> = {
 export default function RoutesScreen() {
   const router = useRouter();
   const [query, setQuery] = useState('');
+  const { session } = useAuth();
   const geoLocation = useGeoLocation();
-  const savedPhotos = usePhotos();
+  const savedPhotos = usePhotos(session?.user.id ?? null);
   const mapRegion: Region = geoLocation.coords
     ? {
         latitude: geoLocation.coords.latitude,

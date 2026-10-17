@@ -118,3 +118,42 @@ La app queda lista para demostrar navegación, GPS contextual, permisos nativos 
 - `npm run db:generate`: comprobo que el esquema coincide con las migraciones versionadas.
 - Las migraciones y el trigger de borrado de album se probaron con SQLite local; el borrado conserva fotos y deja `album_id` en `NULL`.
 - Prueba fisica de capturar tres fotos, cerrar/reabrir Expo Go, modo avion y validar marcadores: pendiente. El GIF de evidencia no se simulo; debe grabarse en el telefono como `assets/screenshots/geocam-offline-flow.gif`.
+
+---
+
+## Semana 8 - Backend as a Service con Supabase
+
+### Objetivo y solicitud
+
+- Convertir la subida manual del taller en un respaldo confiable: sincronizacion de pendientes, borrado coherente, consulta de la nube y datos locales separados por usuario.
+- Completar el flujo de autenticacion, persistencia segura de sesion y carga de imagenes a Supabase Storage, documentando el trabajo de clase y casa sin guardar credenciales en Git.
+
+### Implementacion
+
+- Se agregaron registro, inicio y cierre de sesion con Supabase Auth. Las pantallas privadas se protegen con Expo Router y las credenciales persistentes usan SecureStore en Android/iOS.
+- El cliente utiliza URL y publishable key de variables `EXPO_PUBLIC_*`; el repositorio contiene `.env.example` con valores ficticios y `.gitignore` excluye `.env`.
+- La tabla local SQLite incorpora propietario en fotos y albumes. Las consultas/repositorios filtran por la cuenta actual; los registros antiguos sin propietario se asignan de forma conservadora para no mezclar bibliotecas de usuarios distintos.
+- La cola sube los pendientes en serie, registra avance, carga el archivo como `ArrayBuffer`, evita archivos vacios y compensa objetos nuevos si falla el registro de metadatos.
+- La pestana **Tu nube** consulta los registros del usuario, solicita URLs firmadas y escucha cambios remotos. El borrado coordina objeto Storage, fila Postgres y registro/archivo local, conservando datos locales si no se confirma el borrado remoto.
+- `supabase/schema.sql` define la tabla, indices unicos por usuario, RLS para lectura/escritura y politicas del bucket privado `geocam`, limitado a la carpeta con el UUID autenticado.
+- Se agregaron migraciones Drizzle para identificadores de sincronizacion y propietario. Los errores previos de `DROP INDEX albums_name_unique` y `ALTER TABLE ... ADD owner_id` llevaron a hacer idempotente la actualizacion local: `db/migrations.ts` crea tablas faltantes y comprueba columnas antes de agregarlas.
+- El bootstrap SQLite se movio fuera de la evaluacion del modulo y ahora muestra etapas de inicializacion. La verificacion en dispositivo avanzo de la pantalla de arranque al formulario de acceso.
+- Se corrigio la resolucion de `wa-sqlite.wasm` en Metro, se desactivo el prerender web incompatible con APIs nativas y se usa almacenamiento web en navegador; SecureStore sigue reservado para Android/iOS.
+- `README.md` se actualizo para Semana 8 y agrega `assets/screenshots/13.png` como evidencia visual del formulario de acceso.
+
+### Verificacion realizada
+
+- `tsc --noEmit`: pasa tras los cambios de Semana 8 y la inicializacion local idempotente.
+- `git diff --check`: pasa.
+- `expo export --platform android`: Metro genera el bundle Android.
+- Exportaciones web/Android previas confirmaron que Metro resuelve el worker WASM.
+- En dispositivo Android con Expo Go se observo que la app supera la inicializacion SQLite y presenta el formulario de acceso; la captura es `assets/screenshots/13.png`.
+- Se creo el `.env` local con los valores proporcionados por el usuario; `git check-ignore .env` confirma que no se versiona. No se copio ninguna credencial en este log.
+- Expo se inicio con `-c` en el puerto 8082 porque el 8081 tenia un servidor anterior activo; el CLI confirmo la carga de ambas variables de entorno.
+
+### Pendientes y limites
+
+- No se pudo contactar desde este entorno al host Supabase para validar Auth ni comprobar que la referencia y la publishable key correspondan a un proyecto activo.
+- El usuario aun debe ejecutar `supabase/schema.sql` en el SQL Editor del proyecto. Por eso no se declara verificada la configuracion RLS remota, las politicas del bucket ni el realtime.
+- Queda probar registro/login/logout, persistencia despues de forzar el cierre, aislamiento/borrado con segunda cuenta, sincronizacion real y que Storage reciba imagenes con bytes mayores que cero.
+- La captura confirma que el formulario aparece; no demuestra que registro, inicio de sesion o respaldo remoto ya hayan sido probados.

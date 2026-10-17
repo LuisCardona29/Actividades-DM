@@ -1,4 +1,5 @@
-import { and, desc, eq, isNotNull, like, type SQL } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, like, lt, or, type SQL } from 'drizzle-orm';
+import * as Crypto from 'expo-crypto';
 
 import { db } from '../client';
 import { albums, photos, type NewPhoto } from '../schema';
@@ -10,8 +11,8 @@ export type PhotoFilters = {
 };
 
 export const photosRepo = {
-  listQuery(filters: PhotoFilters) {
-    const conditions: SQL[] = [];
+  listQuery(ownerId: string, filters: PhotoFilters) {
+    const conditions: SQL[] = [eq(photos.ownerId, ownerId)];
     const search = filters.search.trim();
 
     if (search) {
@@ -36,6 +37,11 @@ export const photosRepo = {
         albumName: albums.name,
         note: photos.note,
         favorite: photos.favorite,
+        clientId: photos.clientId,
+        updatedAt: photos.updatedAt,
+        remotePath: photos.remotePath,
+        syncedAt: photos.syncedAt,
+        ownerId: photos.ownerId,
         createdAt: photos.createdAt,
       })
       .from(photos)
@@ -44,7 +50,7 @@ export const photosRepo = {
       .orderBy(desc(photos.createdAt));
   },
 
-  withLocationQuery() {
+  withLocationQuery(ownerId: string) {
     return db
       .select({
         id: photos.id,
@@ -57,15 +63,40 @@ export const photosRepo = {
         albumName: albums.name,
         note: photos.note,
         favorite: photos.favorite,
+        clientId: photos.clientId,
+        updatedAt: photos.updatedAt,
+        remotePath: photos.remotePath,
+        syncedAt: photos.syncedAt,
+        ownerId: photos.ownerId,
         createdAt: photos.createdAt,
       })
       .from(photos)
       .leftJoin(albums, eq(photos.albumId, albums.id))
-      .where(and(isNotNull(photos.latitude), isNotNull(photos.longitude)))
+      .where(and(
+        eq(photos.ownerId, ownerId),
+        isNotNull(photos.latitude),
+        isNotNull(photos.longitude),
+      ))
       .orderBy(desc(photos.createdAt));
   },
 
-  findById(id: number) {
+  listForOwner(ownerId: string) {
+    return db.select().from(photos).where(eq(photos.ownerId, ownerId)).orderBy(desc(photos.createdAt)).all();
+  },
+
+  listPending(ownerId: string) {
+    return db
+      .select()
+      .from(photos)
+      .where(and(
+        eq(photos.ownerId, ownerId),
+        or(isNull(photos.syncedAt), lt(photos.syncedAt, photos.updatedAt)),
+      ))
+      .orderBy(photos.createdAt)
+      .all();
+  },
+
+  findById(id: number, ownerId: string) {
     return db
       .select({
         id: photos.id,
@@ -78,11 +109,16 @@ export const photosRepo = {
         albumName: albums.name,
         note: photos.note,
         favorite: photos.favorite,
+        clientId: photos.clientId,
+        updatedAt: photos.updatedAt,
+        remotePath: photos.remotePath,
+        syncedAt: photos.syncedAt,
+        ownerId: photos.ownerId,
         createdAt: photos.createdAt,
       })
       .from(photos)
       .leftJoin(albums, eq(photos.albumId, albums.id))
-      .where(eq(photos.id, id))
+        .where(and(eq(photos.id, id), eq(photos.ownerId, ownerId)))
       .get();
   },
 
@@ -90,15 +126,57 @@ export const photosRepo = {
     return db.insert(photos).values(data).returning().get();
   },
 
-  update(id: number, data: Partial<Pick<NewPhoto, 'albumId' | 'note' | 'favorite'>>) {
-    return db.update(photos).set(data).where(eq(photos.id, id)).returning().get();
+  update(id: number, ownerId: string, data: Partial<Pick<NewPhoto, 'albumId' | 'note' | 'favorite'>>) {
+    return db.update(photos)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(photos.id, id), eq(photos.ownerId, ownerId)))
+      .returning()
+      .get();
   },
 
-  remove(id: number) {
-    return db.delete(photos).where(eq(photos.id, id)).returning().get();
+  remove(id: number, ownerId: string) {
+    return db.delete(photos).where(and(eq(photos.id, id), eq(photos.ownerId, ownerId))).returning().get();
   },
 
-  clearAll() {
-    return db.delete(photos).returning().all();
+  clearAll(ownerId: string) {
+    return db.delete(photos).where(eq(photos.ownerId, ownerId)).returning().all();
+  },
+
+  async ensureSyncFields(): Promise<void> {
+    const rows = await db.select().from(photos).where(or(isNull(photos.clientId), isNull(photos.updatedAt))).all();
+    for (const photo of rows) {
+      await db.update(photos).set({
+        clientId: photo.clientId ?? Crypto.randomUUID(),
+        updatedAt: photo.updatedAt ?? photo.createdAt,
+      }).where(eq(photos.id, photo.id));
+    }
+  },
+
+  async ensureOwner(ownerId: string) {
+    const existingOwners = await db.selectDistinct({ ownerId: photos.ownerId }).from(photos).where(isNotNull(photos.ownerId)).all();
+    const otherOwnerExists = existingOwners.some((row) => row.ownerId !== ownerId);
+    if (!otherOwnerExists) await db.update(photos).set({ ownerId }).where(isNull(photos.ownerId));
+    await db.update(albums).set({ ownerId: 'legacy-unassigned' }).where(isNull(albums.ownerId));
+  },
+
+  markSynced(id: number, ownerId: string, remotePath: string) {
+    return db.update(photos)
+      .set({ remotePath, syncedAt: new Date() })
+      .where(and(eq(photos.id, id), eq(photos.ownerId, ownerId)))
+      .returning()
+      .get();
+  },
+
+  async ensureLocalOwner(ownerId: string) {
+    const unownedPhotos = await db.select({ id: photos.id, albumId: photos.albumId }).from(photos)
+      .where(isNull(photos.ownerId)).all();
+    for (const photo of unownedPhotos) {
+      if (photo.albumId !== null) {
+        const [album] = await db.select({ ownerId: albums.ownerId }).from(albums)
+          .where(eq(albums.id, photo.albumId)).limit(1).all();
+        if (album?.ownerId === 'legacy-unassigned') continue;
+      }
+      await db.update(photos).set({ ownerId }).where(eq(photos.id, photo.id));
+    }
   },
 };
