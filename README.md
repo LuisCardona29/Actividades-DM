@@ -1,4 +1,4 @@
-# GeoCam — Respaldo seguro de fotos (Semana 8)
+# GeoCam — Respaldo seguro de fotos (Semanas 8 y 9)
 
 App móvil construida con **Expo SDK 57** y **Expo Router**. GeoCam combina una galería local disponible sin conexión con autenticación y respaldo privado de imágenes en Supabase Storage.
 
@@ -12,14 +12,15 @@ App móvil construida con **Expo SDK 57** y **Expo Router**. GeoCam combina una 
 
 1. [Características](#-características)
 2. [GeoCam offline-first](#geocam-offline-first)
-3. [Custom hooks](#-custom-hooks)
-4. [Manejo de permisos](#-manejo-de-permisos)
-5. [Evidencia visual](#-evidencia-visual)
-6. [Checklist de verificación](#-checklist-de-verificación)
-7. [Estructura del proyecto](#-estructura-del-proyecto)
-8. [Cómo ejecutar](#-cómo-ejecutar)
-9. [Tecnologías](#-tecnologías)
-10. [Documentación de IA](#-documentación-de-ia)
+3. [Semana 9: sincronización bidireccional y feed de nube](#semana-9-sincronización-bidireccional-y-feed-de-nube)
+4. [Custom hooks](#-custom-hooks)
+5. [Manejo de permisos](#-manejo-de-permisos)
+6. [Evidencia visual](#-evidencia-visual)
+7. [Checklist de verificación](#-checklist-de-verificación)
+8. [Estructura del proyecto](#-estructura-del-proyecto)
+9. [Cómo ejecutar](#-cómo-ejecutar)
+10. [Tecnologías](#-tecnologías)
+11. [Documentación de IA](#-documentación-de-ia)
 
 ---
 
@@ -58,7 +59,19 @@ Para configurar el proyecto, copia `.env.example` a `.env` y agrega la URL de Su
 
 Las pruebas unitarias cubren cambios pendientes, resolución de conflictos y paginación del feed. En Android se documentaron 33 fotos en **Tu nube**, el fin de la lista y un resultado de sincronización de 33 subidas y 2 borrados; las capturas están en [`EVIDENCIAS.md`](EVIDENCIAS.md). La descarga y propagación de borrados entre dos dispositivos, RLS entre cuentas y Realtime siguen pendientes de verificación.
 
-### Sincronización bidireccional y feed de nube
+## Semana 9: sincronización bidireccional y feed de nube
+
+En esta semana se completó el respaldo de GeoCam entre SQLite y Supabase y se incorporó la consulta paginada del contenido de la nube.
+
+- **Sincronización en dos sentidos:** descarga cambios remotos y sube cambios locales; los borrados se representan con tombstones para poder propagarse después de reconectar.
+- **Feed paginado:** **Tu nube** usa TanStack Query (`useInfiniteQuery`) con páginas de 20 fotos, refresco, cache por cuenta, carga al llegar al final y actualización por Realtime.
+- **Estados de interfaz:** carga, carga de página, error con reintento, lista vacía, uso de cache sin conexión y fin del feed.
+- **Evidencia en Android:** 33 fotos respaldadas y mensaje de fin de lista; resultado de sincronización con 33 subidas y 2 borradas. Ver capturas y límites de esta prueba en [`EVIDENCIAS.md`](EVIDENCIAS.md).
+- **Pruebas automatizadas:** 10 pruebas unitarias para lógica de sincronización y cursor/paginación; `npx tsc --noEmit` y `npm run lint` completaron sin errores.
+
+La prueba en un teléfono no demuestra descarga ni propagación de borrados entre dos dispositivos, aislamiento RLS entre cuentas ni funcionamiento de Realtime en vivo. Esos recorridos siguen pendientes y están detallados en [Pruebas y verificación](#pruebas-y-verificación).
+
+### Arquitectura de sincronización
 
 ```mermaid
 flowchart LR
