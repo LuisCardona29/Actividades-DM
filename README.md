@@ -56,7 +56,7 @@ La app requiere una cuenta para entrar a las pantallas privadas. Desde **Tu nube
 
 Para configurar el proyecto, copia `.env.example` a `.env` y agrega la URL de Supabase y una publishable key. Nunca uses una `service_role` o secret key en la app. Aplica `supabase/schema.sql` desde SQL Editor antes de sincronizar; el script también actualiza proyectos existentes con cursor monotónico, marcas de borrado y control de conflictos.
 
-Las pruebas unitarias cubren cambios pendientes, resolución de conflictos y paginación del feed. El login, RLS entre dos cuentas, almacenamiento, Realtime y uso en modo avión requieren credenciales reales y se detallan en la matriz de verificación.
+Las pruebas unitarias cubren cambios pendientes, resolución de conflictos y paginación del feed. En Android se verificó el registro de dos fotos en Supabase Storage y su aparición en **Tu nube**; las capturas están en [`EVIDENCIAS.md`](EVIDENCIAS.md). RLS entre dos cuentas, Realtime, paginación con más de 20 fotos y sincronización entre dispositivos siguen pendientes de verificación.
 
 ### Sincronización bidireccional y feed de nube
 
@@ -104,7 +104,7 @@ Validacion local: `npm test` pasa con 10 pruebas; `npx tsc --noEmit` y `npm run 
 6. Elimina desde **Tu nube**, sincroniza B y confirma que la fila y archivo local desaparecen.
 7. Con mas de 20 respaldos, carga la pagina siguiente, refresca, prueba sin conexion, provoca un error de red y usa una segunda cuenta para confirmar el feed cacheado, el reintento y el aislamiento RLS.
 
-Las pruebas de integracion que requieren credenciales y dispositivos no se marcan como ejecutadas en este repositorio.
+En un teléfono se verificó la subida de dos fotos y su visualización en el feed. La comprobación de segunda página, descarga en otro dispositivo y propagación de borrados sigue pendiente; no se declara como ejecutada.
 
 ### Modelo de datos
 
@@ -149,6 +149,8 @@ GeoCam permite crear, renombrar y eliminar albumes; buscar por nota; filtrar por
 ![GeoCam con GPS activo, captura y gestión de álbumes](assets/screenshots/11.png)
 
 ![Biblioteca GeoCam con fotos guardadas, filtros y sensor de movimiento](assets/screenshots/12.png)
+
+La evidencia de sincronización capturada en dispositivo Android y la lista de verificaciones pendientes están documentadas en [`EVIDENCIAS.md`](EVIDENCIAS.md).
 
 ### Autenticación y respaldo (Semana 8)
 

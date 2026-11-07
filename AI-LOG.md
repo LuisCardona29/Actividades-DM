@@ -157,3 +157,23 @@ La app queda lista para demostrar navegación, GPS contextual, permisos nativos 
 - El usuario aun debe ejecutar `supabase/schema.sql` en el SQL Editor del proyecto. Por eso no se declara verificada la configuracion RLS remota, las politicas del bucket ni el realtime.
 - Queda probar registro/login/logout, persistencia despues de forzar el cierre, aislamiento/borrado con segunda cuenta, sincronizacion real y que Storage reciba imagenes con bytes mayores que cero.
 - La captura confirma que el formulario aparece; no demuestra que registro, inicio de sesion o respaldo remoto ya hayan sido probados.
+
+---
+
+## Semana 9 - Sincronizacion bidireccional y feed paginado
+
+### Solicitud e implementacion
+
+- Se completo la cola local de tombstones para borrados locales, se agrego el feed de nube con `useInfiniteQuery`, pagina de 20, Realtime e interfaz de carga, error/reintento, vacio, desconexion y fin de lista.
+- `supabase/schema.sql` agrega marcas de borrado y un cursor `server_version` serializado por transaccion para que los pulls no salten cambios concurrentes.
+- Se corrigio la persistencia local de fotos: `File.copy()` ahora se espera antes de guardar la URI y la subida lee los bytes con `File.arrayBuffer()`.
+
+### Verificacion automatizada y en dispositivo
+
+- `npm test`: 10 pruebas aprobadas; `npx tsc --noEmit` y `npm run lint` finalizaron correctamente.
+- El usuario ejecuto `supabase/schema.sql` en el proyecto Supabase y registro/inicio sesion desde Android.
+- En un dispositivo se sincronizaron dos fotos locales: la app confirmo `2 subidas` y ambas aparecieron en **Tu nube**. Las capturas se documentan en `EVIDENCIAS.md` (`assets/screenshots/14.png` a `16.png`).
+
+### Pendiente
+
+- Probar una segunda pagina con mas de 20 fotos, descarga a SQLite en un segundo dispositivo, borrados locales/remotos propagados y conflicto entre dos dispositivos desconectados. Estas pruebas no se declaran completadas.
