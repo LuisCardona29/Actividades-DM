@@ -1,10 +1,12 @@
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { QueryClientProvider } from '@tanstack/react-query';
 
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { initializeGeoCam } from '@/db/migrations';
 import { photosRepo } from '@/db/repositories/photos';
+import { queryClient, useAppFocusManager } from '@/lib/queryClient';
 import { supabaseConfigured } from '@/lib/supabase';
 
 function RootNavigator() {
@@ -62,6 +64,7 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
+  useAppFocusManager();
   const [migrationState, setMigrationState] = useState<{ success: boolean; error: Error | null }>({ success: false, error: null });
   const [seeded, setSeeded] = useState(false);
   const [seedError, setSeedError] = useState<string | null>(null);
@@ -122,9 +125,11 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider>
-      <RootNavigator />
-    </AuthProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <RootNavigator />
+      </AuthProvider>
+    </QueryClientProvider>
   );
 }
 

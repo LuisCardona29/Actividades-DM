@@ -30,6 +30,18 @@ export const photos = sqliteTable('photos', {
     .$defaultFn(() => new Date()),
 });
 
+export const photoDeletions = sqliteTable('photo_deletions', {
+  clientId: text('client_id').primaryKey(),
+  ownerId: text('owner_id').notNull(),
+  remotePath: text('remote_path').notNull(),
+  deletedAt: integer('deleted_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const syncMeta = sqliteTable('sync_meta', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+});
+
 export const albumsRelations = relations(albums, ({ many }) => ({
   photos: many(photos),
 }));

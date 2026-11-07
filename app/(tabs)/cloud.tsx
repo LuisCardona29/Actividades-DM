@@ -1,6 +1,7 @@
 import { useAuth } from '@/context/AuthContext';
-import { useCloudPhotos } from '@/hooks/useCloudPhotos';
+import { useCloudPhotos, useCloudPhotosRealtime, useDeleteCloudPhoto } from '@/hooks/useCloudPhotos';
 import { usePhotos } from '@/hooks/usePhotos';
+import { useIsOnline } from '@/lib/queryClient';
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -9,7 +10,10 @@ export default function CloudScreen() {
   const { session, signOut } = useAuth();
   const ownerId = session?.user.id ?? null;
   const cloud = useCloudPhotos(ownerId);
+  useCloudPhotosRealtime(ownerId);
+  const deleteCloudMutation = useDeleteCloudPhoto();
   const localPhotos = usePhotos(ownerId);
+  const isOnline = useIsOnline();
   const [isSyncing, setIsSyncing] = useState(false);
 
   const syncAll = async (): Promise<void> => {
@@ -17,15 +21,19 @@ export default function CloudScreen() {
     setIsSyncing(true);
     try {
       const result = await localPhotos.syncPending();
-      await cloud.reload();
-      if (result.total === 0) {
-        Alert.alert('Todo sincronizado', 'No hay fotos pendientes.');
-      } else if (result.failed === 0) {
-        Alert.alert('Respaldo completado', `${result.synced} fotos subidas correctamente.`);
+      await cloud.refetch();
+      const changed = result.pulled + result.pushed + result.deleted;
+      if (result.failed === 0) {
+        Alert.alert(
+          changed === 0 ? 'Todo sincronizado' : 'Sincronizacion completada',
+          changed === 0
+            ? 'SQLite y Supabase ya estan al dia.'
+            : `${result.pulled} descargadas, ${result.pushed} subidas y ${result.deleted} borradas.`,
+        );
       } else {
         Alert.alert(
-          'Respaldo parcial',
-          `${result.synced} subidas; ${result.failed} pendientes.\n${result.failures.slice(0, 2).join('\n')}`,
+          'Sincronizacion parcial',
+          `${result.pulled} descargadas, ${result.pushed} subidas y ${result.deleted} borradas; ${result.failed} pendientes.\n${result.failures.slice(0, 2).join('\n')}`,
         );
       }
     } catch (reason) {
@@ -33,6 +41,26 @@ export default function CloudScreen() {
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  const confirmDelete = (clientId: string): void => {
+    if (!ownerId) return;
+    Alert.alert('Eliminar foto respaldada', 'La eliminacion se sincronizara con tus otros dispositivos.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Eliminar',
+        style: 'destructive',
+        onPress: () => deleteCloudMutation.mutate(
+          { clientId, ownerId },
+          {
+            onError: (reason) => Alert.alert(
+              'No se pudo eliminar',
+              reason instanceof Error ? reason.message : 'Intenta de nuevo.',
+            ),
+          },
+        ),
+      },
+    ]);
   };
 
   return (
@@ -48,52 +76,92 @@ export default function CloudScreen() {
         </Pressable>
       </View>
 
-      <Pressable style={[styles.syncButton, isSyncing && styles.syncButtonBusy]} onPress={() => { void syncAll(); }} disabled={isSyncing}>
+      <Pressable style={[styles.syncButton, (isSyncing || !isOnline) && styles.syncButtonBusy]} onPress={() => { void syncAll(); }} disabled={isSyncing || !isOnline}>
         {isSyncing ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="cloud-upload-outline" size={19} color="#fff" />}
         <Text style={styles.syncText}>
           {isSyncing && localPhotos.syncProgress
             ? `Sincronizando ${localPhotos.syncProgress.completed} de ${localPhotos.syncProgress.total}`
-            : isSyncing ? 'Preparando respaldo...' : 'Sincronizar pendientes'}
+            : isSyncing ? 'Preparando sincronizacion...' : isOnline ? 'Sincronizar cambios' : 'Sin conexion'}
         </Text>
       </Pressable>
 
-      {cloud.error ? <Text style={styles.error}>{cloud.error}</Text> : null}
+      {!isOnline ? <Text style={styles.offline}>Sin conexion. Se muestran las fotos guardadas en cache; los cambios se sincronizaran al reconectar.</Text> : null}
+      {cloud.isError ? (
+        <View style={styles.errorPanel}>
+          <Text style={styles.error}>{cloud.error instanceof Error ? cloud.error.message : 'No se pudo cargar tu respaldo.'}</Text>
+          <Pressable style={styles.retryButton} onPress={() => { void cloud.refetch(); }}>
+            <Text style={styles.retryText}>Reintentar</Text>
+          </Pressable>
+        </View>
+      ) : null}
       <View style={styles.listHeader}>
         <Text style={styles.sectionTitle}>Fotos respaldadas</Text>
-        <Text style={styles.count}>{cloud.photos.length}</Text>
+        <Text style={styles.count}>{cloud.photos.length}{cloud.hasNextPage ? '+' : ''}</Text>
       </View>
 
-      <FlatList
-        data={cloud.photos}
-        keyExtractor={(photo) => photo.client_id}
-        refreshing={cloud.isLoading}
-        onRefresh={() => { void cloud.reload(); }}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={(
-          <View style={styles.empty}>
-            {cloud.isLoading ? <ActivityIndicator color="#ff6b3d" /> : <Ionicons name="cloud-outline" size={34} color="#98a2b3" />}
-            <Text style={styles.emptyTitle}>{cloud.isLoading ? 'Consultando tu respaldo...' : 'Aun no hay fotos en la nube'}</Text>
-            {!cloud.isLoading ? <Text style={styles.emptyCopy}>Sincroniza las fotos locales para encontrarlas desde otros dispositivos.</Text> : null}
-          </View>
-        )}
-        renderItem={({ item }) => (
-          <View style={styles.photoCard}>
-            <Image source={{ uri: item.signedUrl }} style={styles.photo} />
-            <View style={styles.photoInfo}>
-              <View style={styles.photoTitleRow}>
-                <Text style={styles.photoTitle} numberOfLines={1}>{item.note || 'Foto GeoCam'}</Text>
-                {item.favorite ? <Ionicons name="heart" size={16} color="#e45745" /> : null}
-              </View>
-              <Text style={styles.meta}>{item.source === 'camera' ? 'Camara' : 'Galeria'} · {new Date(item.taken_at).toLocaleString('es-CO')}</Text>
-              <Text style={styles.meta}>
-                {item.latitude !== null && item.longitude !== null
-                  ? `${item.latitude.toFixed(4)}, ${item.longitude.toFixed(4)}`
-                  : 'Sin coordenadas'}
-              </Text>
+      {cloud.isPending && cloud.fetchStatus === 'paused' ? (
+        <Text style={styles.emptyCopy}>Conectate a internet para consultar la nube por primera vez.</Text>
+      ) : null}
+      {cloud.isPending && cloud.fetchStatus === 'fetching' ? <ActivityIndicator style={styles.loader} color="#ff6b3d" /> : null}
+      {cloud.data !== undefined ? (
+        <FlatList
+          data={cloud.photos}
+          keyExtractor={(photo) => photo.client_id}
+          refreshing={cloud.isRefetching && !cloud.isFetchingNextPage}
+          onRefresh={() => { void cloud.refetch(); }}
+          contentContainerStyle={styles.listContent}
+          onEndReachedThreshold={0.4}
+          onEndReached={() => {
+            if (cloud.hasNextPage && !cloud.isFetchingNextPage && !cloud.isFetchNextPageError) {
+              void cloud.fetchNextPage();
+            }
+          }}
+          ListEmptyComponent={(
+            <View style={styles.empty}>
+              <Ionicons name="cloud-outline" size={34} color="#98a2b3" />
+              <Text style={styles.emptyTitle}>Aun no hay fotos en la nube</Text>
+              <Text style={styles.emptyCopy}>Sincroniza las fotos locales para encontrarlas desde otros dispositivos.</Text>
             </View>
-          </View>
-        )}
-      />
+          )}
+          ListFooterComponent={(
+            cloud.isFetchingNextPage
+              ? <ActivityIndicator style={styles.loader} color="#ff6b3d" />
+              : cloud.isFetchNextPageError
+                ? <Pressable style={styles.retryButton} onPress={() => { void cloud.fetchNextPage(); }}><Text style={styles.retryText}>Reintentar carga</Text></Pressable>
+                : cloud.hasNextPage
+                  ? <Pressable style={styles.retryButton} onPress={() => { void cloud.fetchNextPage(); }}><Text style={styles.retryText}>Cargar mas fotos</Text></Pressable>
+                  : cloud.photos.length > 0 ? <Text style={styles.endOfList}>Has llegado al final</Text> : null
+          )}
+          renderItem={({ item }) => (
+            <View style={styles.photoCard}>
+              <Image source={{ uri: item.signedUrl }} style={styles.photo} />
+              <View style={styles.photoInfo}>
+                <View style={styles.photoTitleRow}>
+                  <Text style={styles.photoTitle} numberOfLines={1}>{item.note || 'Foto GeoCam'}</Text>
+                  {item.favorite ? <Ionicons name="heart" size={16} color="#e45745" /> : null}
+                  <Pressable
+                    onPress={() => confirmDelete(item.client_id)}
+                    disabled={deleteCloudMutation.isPending || !isOnline}
+                    accessibilityRole="button"
+                    accessibilityLabel="Eliminar foto respaldada"
+                    style={styles.deleteButton}
+                  >
+                    {deleteCloudMutation.isPending
+                      ? <ActivityIndicator size="small" color="#b42318" />
+                      : <Ionicons name="trash-outline" size={18} color="#b42318" />}
+                  </Pressable>
+                </View>
+                <Text style={styles.meta}>{item.source === 'camera' ? 'Camara' : 'Galeria'} · {new Date(item.taken_at).toLocaleString('es-CO')}</Text>
+                <Text style={styles.meta}>
+                  {item.latitude !== null && item.longitude !== null
+                    ? `${item.latitude.toFixed(4)}, ${item.longitude.toFixed(4)}`
+                    : 'Sin coordenadas'}
+                </Text>
+              </View>
+            </View>
+          )}
+        />
+      ) : null}
     </View>
   );
 }
@@ -108,7 +176,12 @@ const styles = StyleSheet.create({
   syncButton: { alignItems: 'center', backgroundColor: '#ff6b3d', borderRadius: 12, flexDirection: 'row', gap: 9, justifyContent: 'center', minHeight: 48, paddingHorizontal: 14 },
   syncButtonBusy: { opacity: 0.82 },
   syncText: { color: '#fff', fontSize: 13, fontWeight: '800' },
-  error: { color: '#b42318', fontSize: 12, marginTop: 10 },
+  offline: { backgroundColor: '#fef3c7', borderRadius: 9, color: '#92400e', fontSize: 12, lineHeight: 18, marginTop: 10, padding: 9 },
+  errorPanel: { alignItems: 'center', gap: 8, paddingTop: 18 },
+  error: { color: '#b42318', fontSize: 12, textAlign: 'center' },
+  retryButton: { alignSelf: 'center', backgroundColor: '#fff', borderRadius: 10, marginVertical: 8, paddingHorizontal: 14, paddingVertical: 10 },
+  retryText: { color: '#344054', fontSize: 12, fontWeight: '800' },
+  loader: { margin: 20 },
   listHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: 22 },
   sectionTitle: { color: '#141b2d', fontSize: 18, fontWeight: '800' },
   count: { color: '#667085', fontSize: 12, fontWeight: '700' },
@@ -122,4 +195,6 @@ const styles = StyleSheet.create({
   photoTitleRow: { alignItems: 'center', flexDirection: 'row', gap: 7 },
   photoTitle: { color: '#141b2d', flex: 1, fontSize: 14, fontWeight: '800' },
   meta: { color: '#667085', fontSize: 11 },
+  deleteButton: { alignItems: 'center', height: 34, justifyContent: 'center', width: 34 },
+  endOfList: { color: '#667085', fontSize: 11, padding: 16, textAlign: 'center' },
 });

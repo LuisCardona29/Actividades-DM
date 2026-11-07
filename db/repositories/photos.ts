@@ -2,7 +2,7 @@ import { and, desc, eq, isNotNull, isNull, like, lt, or, type SQL } from 'drizzl
 import * as Crypto from 'expo-crypto';
 
 import { db } from '../client';
-import { albums, photos, type NewPhoto } from '../schema';
+import { albums, photoDeletions, photos, type NewPhoto } from '../schema';
 
 export type PhotoFilters = {
   search: string;
@@ -134,12 +134,96 @@ export const photosRepo = {
       .get();
   },
 
-  remove(id: number, ownerId: string) {
-    return db.delete(photos).where(and(eq(photos.id, id), eq(photos.ownerId, ownerId))).returning().get();
+  removeWithTombstone(id: number, ownerId: string) {
+    return db.transaction((tx) => {
+      const photo = tx.select().from(photos)
+        .where(and(eq(photos.id, id), eq(photos.ownerId, ownerId)))
+        .get();
+      if (!photo) return undefined;
+
+      if (photo.clientId) {
+        tx.insert(photoDeletions).values({
+          clientId: photo.clientId,
+          ownerId,
+          remotePath: photo.remotePath ?? `${ownerId}/${photo.clientId}.jpg`,
+          deletedAt: new Date(),
+        }).onConflictDoUpdate({
+          target: photoDeletions.clientId,
+          set: {
+            ownerId,
+            remotePath: photo.remotePath ?? `${ownerId}/${photo.clientId}.jpg`,
+            deletedAt: new Date(),
+          },
+        }).run();
+      }
+
+      tx.delete(photos).where(and(eq(photos.id, id), eq(photos.ownerId, ownerId))).run();
+      return photo;
+    });
   },
 
   clearAll(ownerId: string) {
-    return db.delete(photos).where(eq(photos.ownerId, ownerId)).returning().all();
+    return db.transaction((tx) => {
+      const stored = tx.select().from(photos).where(eq(photos.ownerId, ownerId)).all();
+      for (const photo of stored) {
+        if (!photo.clientId) continue;
+        tx.insert(photoDeletions).values({
+          clientId: photo.clientId,
+          ownerId,
+          remotePath: photo.remotePath ?? `${ownerId}/${photo.clientId}.jpg`,
+          deletedAt: new Date(),
+        }).onConflictDoUpdate({
+          target: photoDeletions.clientId,
+          set: {
+            ownerId,
+            remotePath: photo.remotePath ?? `${ownerId}/${photo.clientId}.jpg`,
+            deletedAt: new Date(),
+          },
+        }).run();
+      }
+      tx.delete(photos).where(eq(photos.ownerId, ownerId)).run();
+      return stored;
+    });
+  },
+
+  removeFromRemote(id: number, ownerId: string) {
+    return db.delete(photos).where(and(eq(photos.id, id), eq(photos.ownerId, ownerId))).returning().get();
+  },
+
+  listDeletions(ownerId: string) {
+    return db.select().from(photoDeletions)
+      .where(eq(photoDeletions.ownerId, ownerId))
+      .orderBy(photoDeletions.deletedAt)
+      .all();
+  },
+
+  findDeletion(clientId: string, ownerId: string) {
+    return db.select().from(photoDeletions)
+      .where(and(eq(photoDeletions.clientId, clientId), eq(photoDeletions.ownerId, ownerId)))
+      .get();
+  },
+
+  removeDeletion(clientId: string, ownerId: string) {
+    return db.delete(photoDeletions)
+      .where(and(eq(photoDeletions.clientId, clientId), eq(photoDeletions.ownerId, ownerId)))
+      .run();
+  },
+
+  findByClientId(clientId: string, ownerId: string) {
+    return db.select().from(photos)
+      .where(and(eq(photos.clientId, clientId), eq(photos.ownerId, ownerId)))
+      .get();
+  },
+
+  insertFromRemote(data: NewPhoto) {
+    return db.insert(photos).values(data).returning().get();
+  },
+
+  applyRemote(
+    id: number,
+    changes: Pick<NewPhoto, 'latitude' | 'longitude' | 'note' | 'favorite' | 'source' | 'updatedAt' | 'remotePath' | 'syncedAt'>,
+  ) {
+    return db.update(photos).set(changes).where(eq(photos.id, id)).returning().get();
   },
 
   async ensureSyncFields(): Promise<void> {
@@ -159,9 +243,9 @@ export const photosRepo = {
     await db.update(albums).set({ ownerId: 'legacy-unassigned' }).where(isNull(albums.ownerId));
   },
 
-  markSynced(id: number, ownerId: string, remotePath: string) {
+  markSynced(id: number, ownerId: string, remotePath: string, syncedAt: Date) {
     return db.update(photos)
-      .set({ remotePath, syncedAt: new Date() })
+      .set({ remotePath, syncedAt })
       .where(and(eq(photos.id, id), eq(photos.ownerId, ownerId)))
       .returning()
       .get();

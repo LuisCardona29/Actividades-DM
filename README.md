@@ -4,7 +4,7 @@ App móvil construida con **Expo SDK 57** y **Expo Router**. GeoCam combina una 
 
 > Los datos de demostración del mapa están ubicados en **Riohacha, La Guajira (Colombia)**.
 
-**Repositorio:** https://github.com/LuisCardona29/Semana-6-DM
+**Repositorio:** https://github.com/LuisCardona29/Actividades-DM
 
 ---
 
@@ -52,29 +52,29 @@ La galería está disponible sin conexión: captura/importación, edición de no
 
 ## GeoCam offline-first
 
-La app requiere una cuenta para entrar a las pantallas privadas. Desde **Tu nube** se pueden sincronizar pendientes, consultar fotos respaldadas y cerrar sesión. Las credenciales de sesión persisten con Expo SecureStore. Las fotos se guardan en el bucket privado `geocam`, organizadas en una carpeta con el ID del usuario; RLS restringe filas y objetos a su propietario.
+La app requiere una cuenta para entrar a las pantallas privadas. Desde **Tu nube** se sincronizan cambios en ambos sentidos, se consulta un feed paginado con TanStack Query y se pueden borrar respaldos. Las credenciales de sesión persisten con Expo SecureStore. Las fotos se guardan en el bucket privado `geocam`, organizadas en una carpeta con el ID del usuario; RLS restringe filas y objetos a su propietario.
 
-Para configurar el proyecto, copia `.env.example` a `.env` y agrega la URL de Supabase y una publishable key. Nunca uses una `service_role` o secret key en la app. Aplica `supabase/schema.sql` desde SQL Editor antes de sincronizar. `drizzle/0004_fair_sparrow.sql` agrega el propietario local de álbumes.
+Para configurar el proyecto, copia `.env.example` a `.env` y agrega la URL de Supabase y una publishable key. Nunca uses una `service_role` o secret key en la app. Aplica `supabase/schema.sql` desde SQL Editor antes de sincronizar; el script también actualiza proyectos existentes con cursor monotónico, marcas de borrado y control de conflictos.
 
-La comprobación automatizada de TypeScript pasa. Falta validar el registro y login contra Supabase, persistencia tras forzar el cierre, aislamiento con una segunda cuenta y el tamaño de archivos cargados en un dispositivo conectado al proyecto real.
+Las pruebas unitarias cubren cambios pendientes, resolución de conflictos y paginación del feed. El login, RLS entre dos cuentas, almacenamiento, Realtime y uso en modo avión requieren credenciales reales y se detallan en la matriz de verificación.
 
-### Diagrama local y remoto (Semana 8)
+### Sincronización bidireccional y feed de nube
 
 ```mermaid
 flowchart LR
   A[Camara / galeria] --> B[Archivo persistente en Documents]
   B --> C[SQLite local: photos + albums, owner_id]
-  C -->|Sync pendientes| D[Supabase Storage: bucket privado geocam / user_id / client_id]
-  C -->|Metadatos| E[Postgres public.photos, RLS por auth.uid]
-  E -->|Realtime + SELECT| F[Pestana Tu nube]
+  C -->|Subidas y tombstones pendientes| D[Supabase Storage: bucket privado geocam / user_id / client_id]
+  C <-->|Metadatos, cambios y tombstones| E[Postgres public.photos, RLS por auth.uid]
+  E -->|Realtime + TanStack Query paginado| F[Pestana Tu nube]
   D -->|URL firmada| F
 ```
 
-SQLite sigue siendo la fuente de verdad del dispositivo. El respaldo remoto requiere conexión; las filas y objetos remotos solo son visibles para su usuario autenticado. Al eliminar, primero se confirma la operación remota y luego se limpia el archivo y fila local.
+SQLite sigue disponible sin conexion y conserva una cola local de tombstones para fotos que ya llegaron a la nube y para subidas cuyo resultado pudo quedar incierto. Al reconectar, el ciclo baja cambios remotos, resuelve conflictos por `updated_at` (gana la version mas reciente), sube cambios locales y aplica borrados remotos. `server_version` usa una secuencia asignada bajo un bloqueo transaccional del servidor: no depende de la hora del dispositivo ni deja que un cursor salte una transaccion concurrente sin confirmar. Los borrados se conservan como tombstones en Postgres para que otros dispositivos tambien los apliquen; el feed los excluye y las filas y objetos solo son visibles para su usuario autenticado.
 
 ### SQL de Supabase
 
-El SQL completo e idempotente de la tabla, políticas RLS y bucket privado está en [`supabase/schema.sql`](supabase/schema.sql). Ejecútalo en el SQL Editor del proyecto antes de conectar la app. Las claves `service_role`/secret nunca se configuran en el cliente móvil.
+El SQL idempotente de la tabla, cursor monotono, trigger de versionado, politicas RLS y bucket privado esta en [`supabase/schema.sql`](supabase/schema.sql). Ejecutalo en el SQL Editor del proyecto antes de conectar la app. Al borrarse una foto primero se conserva el tombstone y despues se elimina el archivo de Storage. Las claves `service_role`/secret nunca se configuran en el cliente movil.
 
 ### Auditoría de credenciales
 
@@ -82,9 +82,29 @@ El SQL completo e idempotente de la tabla, políticas RLS y bucket privado está
 - `.env` y `.env.*` están ignorados; `.env.example` contiene nombres de variables y valores de ejemplo no válidos.
 - El cliente usa únicamente `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; no hay secret key en código.
 
-La lista de pendientes y los cambios recientes en fotos se sincronizan en serie con avance, sin registrar objetos vacíos. `Tu nube` consulta la cuenta actual, obtiene URLs firmadas y escucha cambios por Realtime. El GIF real del flujo debe añadirse como `assets/screenshots/geocam-cloud-flow.gif` después de grabarlo en un dispositivo conectado al proyecto.
+`Tu nube` consulta paginas de 20 fotos ordenadas por ID con `useInfiniteQuery`, conserva cache por cuenta, renueva al refrescar y pagina al llegar al final. Las URL firmadas se generan por pagina; Realtime invalida la cache del usuario actual. Los estados de carga, error con reintento, lista vacia, cache sin conexion, carga de pagina y fin del feed tienen respuesta visual.
 
-Las escrituras se guardan primero en el dispositivo. La interfaz lee consultas reactivas desde SQLite; no depende de conexión a internet.
+Las altas, ediciones y borrados locales se guardan primero en SQLite. El borrado local elimina de inmediato la fila y el archivo del dispositivo y registra un tombstone en la misma transaccion; esto tambien cubre una subida que alcanzo Storage pero no llego a confirmar sus metadatos. Borrar desde la nube crea el tombstone remoto y el siguiente ciclo lo propaga a SQLite. Un fallo conserva la cola para reintentar sin perder el cambio local.
+
+### Pruebas y verificacion
+
+```bash
+npm test
+npx tsc --noEmit
+npm run lint
+```
+
+Validacion local: `npm test` pasa con 10 pruebas; `npx tsc --noEmit` y `npm run lint` tambien terminan sin errores. La suite de `tests/syncLogic.test.ts` verifica que una foto nueva/editada quede pendiente hasta confirmar su version, que gane el cambio mas reciente, que un tombstone se aplique o se reconozca, y que los cambios offline mas nuevos sobrevivan a una sincronizacion. `tests/feedPaging.test.ts` comprueba que el cursor use la ultima fila visible y que la ultima pagina termine sin duplicar filas. Para verificar el recorrido completo en un proyecto Supabase configurado:
+
+1. Sincroniza una foto del dispositivo A y confirma que aparece en el feed paginado.
+2. Desconecta A y borra una foto respaldada; confirma que desaparece de SQLite y que el tombstone queda pendiente sin alertar error de red. Repite con una foto nueva antes de su primera sincronizacion.
+3. Reconecta A y sincroniza; confirma que Postgres marca `deleted_at`, Storage elimina el objeto y el feed no la muestra.
+4. Crea una foto en A y sincroniza desde B; verifica que B descarga el objeto y crea la fila SQLite con `client_id` compartido.
+5. Edita la misma foto en ambos dispositivos desconectados y sincroniza; la version mas reciente debe quedar en ambos. Repite con un borrado concurrente.
+6. Elimina desde **Tu nube**, sincroniza B y confirma que la fila y archivo local desaparecen.
+7. Con mas de 20 respaldos, carga la pagina siguiente, refresca, prueba sin conexion, provoca un error de red y usa una segunda cuenta para confirmar el feed cacheado, el reintento y el aislamiento RLS.
+
+Las pruebas de integracion que requieren credenciales y dispositivos no se marcan como ejecutadas en este repositorio.
 
 ### Modelo de datos
 

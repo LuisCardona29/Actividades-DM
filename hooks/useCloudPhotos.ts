@@ -1,52 +1,49 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo } from 'react';
 
 import { supabase } from '@/lib/supabase';
-import { listCloudPhotos, signedPhotoUrl, type CloudPhoto } from '@/services/cloudPhotos';
-
-export type CloudPhotoView = CloudPhoto & { signedUrl: string };
+import {
+  deleteCloudPhoto,
+  listCloudPhotosPage,
+  type CloudPhotoCursor,
+} from '@/services/cloudPhotos';
 
 export function useCloudPhotos(ownerId: string | null) {
-  const [photos, setPhotos] = useState<CloudPhotoView[]>([]);
-  const [isLoading, setIsLoading] = useState(ownerId !== null);
-  const [error, setError] = useState<string | null>(null);
-  const requestId = useRef(0);
+  const query = useInfiniteQuery({
+    queryKey: ['cloudPhotos', ownerId],
+    queryFn: ({ pageParam }) => {
+      if (!ownerId) throw new Error('Inicia sesion para consultar las fotos de la nube.');
+      return listCloudPhotosPage(ownerId, pageParam);
+    },
+    initialPageParam: null as CloudPhotoCursor | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    enabled: ownerId !== null,
+  });
 
-  const reload = useCallback(async (): Promise<void> => {
-    const currentRequest = ++requestId.current;
-    if (!ownerId) {
-      setPhotos([]);
-      setIsLoading(false);
-      setError(null);
-      return;
-    }
+  const photos = useMemo(
+    () => query.data?.pages.flatMap((page) => page.items) ?? [],
+    [query.data],
+  );
+  return { ...query, photos };
+}
 
-    setIsLoading(true);
-    try {
-      const rows = await listCloudPhotos(ownerId);
-      const photoViews = await Promise.all(rows.map(async (photo) => ({
-        ...photo,
-        signedUrl: await signedPhotoUrl(photo.storage_path),
-      })));
-      if (requestId.current === currentRequest) {
-        setPhotos(photoViews);
-        setError(null);
-      }
-    } catch (reason) {
-      if (requestId.current === currentRequest) {
-        setError(reason instanceof Error ? reason.message : 'No se pudo cargar la nube.');
-      }
-    } finally {
-      if (requestId.current === currentRequest) setIsLoading(false);
-    }
-  }, [ownerId]);
+export function useDeleteCloudPhoto() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ clientId, ownerId }: { clientId: string; ownerId: string }) =>
+      deleteCloudPhoto(clientId, ownerId),
+    onSettled: (_data, _error, variables) => queryClient.invalidateQueries({
+      queryKey: ['cloudPhotos', variables.ownerId],
+    }),
+  });
+}
+
+export function useCloudPhotosRealtime(ownerId: string | null): void {
+  const queryClient = useQueryClient();
 
   useEffect(() => {
-    if (!ownerId) {
-      void reload();
-      return;
-    }
+    if (!ownerId) return;
 
-    void reload();
     const channel = supabase
       .channel(`geocam-cloud-${ownerId}`)
       .on('postgres_changes', {
@@ -55,15 +52,16 @@ export function useCloudPhotos(ownerId: string | null) {
         table: 'photos',
         filter: `user_id=eq.${ownerId}`,
       }, () => {
-        void reload();
+        void queryClient.invalidateQueries({ queryKey: ['cloudPhotos', ownerId] });
       })
-      .subscribe();
+      .subscribe((status, error) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error('[GeoCam cloud realtime]', error ?? status);
+        }
+      });
 
     return () => {
-      requestId.current += 1;
       void supabase.removeChannel(channel);
     };
-  }, [ownerId, reload]);
-
-  return { photos, isLoading, error, reload };
+  }, [ownerId, queryClient]);
 }

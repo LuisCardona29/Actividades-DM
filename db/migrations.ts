@@ -38,6 +38,16 @@ function migrateSchema(): void {
       name TEXT NOT NULL,
       created_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS photo_deletions (
+      client_id TEXT PRIMARY KEY NOT NULL,
+      owner_id TEXT NOT NULL,
+      remote_path TEXT NOT NULL,
+      deleted_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS sync_meta (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL
+    );
   `);
 
   const photoColumns: Array<[string, string]> = [

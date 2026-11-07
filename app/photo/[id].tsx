@@ -113,8 +113,8 @@ export default function PhotoDetailScreen() {
           <Text style={styles.saveText}>{busy ? 'Guardando...' : 'Guardar cambios'}</Text>
         </Pressable>
         <Pressable style={styles.cloudButton} onPress={() => { void uploadToCloud(); }} disabled={syncBusy}>
-          {syncBusy ? <Text style={styles.cloudButtonText}>Subiendo...</Text> : <Ionicons name={photo.syncedAt && photo.updatedAt && photo.syncedAt >= photo.updatedAt ? 'cloud-done-outline' : 'cloud-upload-outline'} size={18} color="#fff" />}
-          <Text style={styles.cloudButtonText}>{syncBusy ? 'Subiendo...' : photo.syncedAt && photo.updatedAt && photo.syncedAt >= photo.updatedAt ? 'Respaldada en la nube' : 'Subir a la nube'}</Text>
+          {syncBusy ? <Text style={styles.cloudButtonText}>Sincronizando...</Text> : <Ionicons name={photo.syncedAt && photo.updatedAt && photo.syncedAt >= photo.updatedAt ? 'cloud-done-outline' : 'cloud-upload-outline'} size={18} color="#fff" />}
+          <Text style={styles.cloudButtonText}>{syncBusy ? 'Sincronizando...' : photo.syncedAt && photo.updatedAt && photo.syncedAt >= photo.updatedAt ? 'Respaldada en la nube' : 'Sincronizar cambios'}</Text>
         </Pressable>
         <Pressable style={styles.deleteButton} onPress={confirmDelete}>
           <Text style={styles.deleteText}>Eliminar foto y archivo</Text>

@@ -1,4 +1,5 @@
 import { Directory, File, Paths } from 'expo-file-system';
+import { signedPhotoUrl } from '@/services/cloudPhotos';
 
 const photosDirectory = new Directory(Paths.document, 'geocam-photos');
 
@@ -18,4 +19,16 @@ export function deletePhotoFile(uri: string): void {
   if (file.exists) {
     file.delete();
   }
+}
+
+export async function downloadPhotoFile(storagePath: string, clientId: string): Promise<string> {
+  photosDirectory.create({ idempotent: true, intermediates: true });
+
+  const extension = storagePath.split('.').pop()?.toLowerCase();
+  const safeExtension = extension && /^[a-z0-9]{1,8}$/.test(extension) ? extension : 'jpg';
+  const destination = new File(photosDirectory, `${clientId}.${safeExtension}`);
+  if (destination.exists) return destination.uri;
+
+  const url = await signedPhotoUrl(storagePath);
+  return (await File.downloadFileAsync(url, destination)).uri;
 }

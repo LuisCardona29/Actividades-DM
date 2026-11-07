@@ -127,7 +127,7 @@ export default function GeoCamScreen() {
   };
 
   const confirmClearPhotos = (): void => {
-    Alert.alert('Eliminar todas las fotos', 'Se borraran los registros y archivos locales, y tambien las copias respaldadas. Necesitas conexion para borrar copias de la nube.', [
+    Alert.alert('Eliminar todas las fotos', 'Se borraran los registros y archivos locales. Las copias respaldadas quedaran en cola y se borraran de la nube al sincronizar.', [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Eliminar todo', style: 'destructive', onPress: () => { void photos.clearAll().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'No se pudo vaciar la galeria.')); } },
     ]);
@@ -138,12 +138,16 @@ export default function GeoCamScreen() {
     setSyncBusy(true);
     try {
       const result = await photos.syncPending();
-      if (result.total === 0) {
-        Alert.alert('Todo sincronizado', 'No hay fotos pendientes.');
-      } else if (result.failed === 0) {
-        Alert.alert('Respaldo completado', `${result.synced} fotos subidas.`);
+      const changed = result.pulled + result.pushed + result.deleted;
+      if (result.failed === 0) {
+        Alert.alert(
+          changed === 0 ? 'Todo sincronizado' : 'Sincronizacion completada',
+          changed === 0
+            ? 'SQLite y Supabase ya estan al dia.'
+            : `${result.pulled} descargadas, ${result.pushed} subidas y ${result.deleted} borradas.`,
+        );
       } else {
-        Alert.alert('Respaldo parcial', `${result.synced} subidas; ${result.failed} pendientes.\n${result.failures.slice(0, 2).join('\n')}`);
+        Alert.alert('Sincronizacion parcial', `${result.pulled} descargadas, ${result.pushed} subidas y ${result.deleted} borradas; ${result.failed} pendientes.\n${result.failures.slice(0, 2).join('\n')}`);
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'No se pudo sincronizar la galeria.');
