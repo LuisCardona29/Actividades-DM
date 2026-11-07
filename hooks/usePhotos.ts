@@ -22,7 +22,7 @@ export function usePhotos(ownerId: string | null, filters: PhotoFilters = { sear
     albumId: number | null;
   }): Promise<void> => {
     if (!ownerId) throw new Error('Inicia sesion antes de guardar fotos.');
-    const permanentUri = persistPhotoFile(input.uri);
+    const permanentUri = await persistPhotoFile(input.uri);
 
     try {
       await photosRepo.create({

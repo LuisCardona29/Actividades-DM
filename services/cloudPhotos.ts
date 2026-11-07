@@ -1,5 +1,6 @@
 import { photosRepo } from '@/db/repositories/photos';
 import type { Photo } from '@/db/schema';
+import { File } from 'expo-file-system';
 import { supabase } from '@/lib/supabase';
 import { splitIdPage } from '@/services/feedPaging';
 
@@ -58,9 +59,13 @@ function extensionFor(uri: string): string {
 }
 
 async function readPhotoBytes(uri: string): Promise<ArrayBuffer> {
-  const response = await fetch(uri);
-  if (!response.ok) throw new Error('No se pudo leer el archivo local de la foto.');
-  return response.arrayBuffer();
+  const file = new File(uri);
+  if (!file.exists) {
+    throw new Error('El archivo local de la foto ya no existe. Vuelve a capturarla o importarla.');
+  }
+  const contents = await file.arrayBuffer();
+  if (contents.byteLength === 0) throw new Error('El archivo local de la foto esta vacio. Vuelve a capturarla o importarla.');
+  return contents;
 }
 
 export async function uploadPhoto(photo: Photo, userId: string): Promise<boolean> {

@@ -3,13 +3,20 @@ import { signedPhotoUrl } from '@/services/cloudPhotos';
 
 const photosDirectory = new Directory(Paths.document, 'geocam-photos');
 
-export function persistPhotoFile(cacheUri: string): string {
+export async function persistPhotoFile(cacheUri: string): Promise<string> {
   photosDirectory.create({ idempotent: true, intermediates: true });
 
   const source = new File(cacheUri);
+  if (!source.exists) throw new Error('No se encontro el archivo de origen. Vuelve a seleccionar la foto.');
   const extension = source.extension || '.jpg';
   const destination = new File(photosDirectory, `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}${extension}`);
-  source.copy(destination);
+  try {
+    await source.copy(destination);
+    if (!destination.exists) throw new Error('No se pudo conservar la foto en el almacenamiento local.');
+  } catch (error) {
+    if (destination.exists) destination.delete();
+    throw error;
+  }
 
   return destination.uri;
 }
