@@ -172,8 +172,9 @@ La app queda lista para demostrar navegación, GPS contextual, permisos nativos 
 
 - `npm test`: 10 pruebas aprobadas; `npx tsc --noEmit` y `npm run lint` finalizaron correctamente.
 - El usuario ejecuto `supabase/schema.sql` en el proyecto Supabase y registro/inicio sesion desde Android.
-- En un dispositivo se sincronizaron dos fotos locales: la app confirmo `2 subidas` y ambas aparecieron en **Tu nube**. Las capturas se documentan en `EVIDENCIAS.md` (`assets/screenshots/14.png` a `16.png`).
+- En Android se documentaron 33 fotos en **Tu nube** y el mensaje de fin de lista; un resultado de sincronizacion informo `33 subidas` y `2 borradas`. Las capturas se documentan en `EVIDENCIAS.md` (`assets/screenshots/14.png` a `18.png`).
 
 ### Pendiente
 
-- Probar una segunda pagina con mas de 20 fotos, descarga a SQLite en un segundo dispositivo, borrados locales/remotos propagados y conflicto entre dos dispositivos desconectados. Estas pruebas no se declaran completadas.
+- La pantalla con 33 registros y el fin de lista documenta que el feed paso de la primera tanda; no se capturo por separado la transicion de carga de pagina.
+- Probar descarga a SQLite en un segundo dispositivo, propagacion de borrados entre dispositivos y conflicto entre dos dispositivos desconectados. Estas pruebas no se declaran completadas.
