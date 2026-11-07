@@ -71,6 +71,25 @@ En esta semana se completó el respaldo de GeoCam entre SQLite y Supabase y se i
 
 La prueba en un teléfono no demuestra descarga ni propagación de borrados entre dos dispositivos, aislamiento RLS entre cuentas ni funcionamiento de Realtime en vivo. Esos recorridos siguen pendientes y están detallados en [Pruebas y verificación](#pruebas-y-verificación).
 
+### Capturas de la Semana 9
+
+Las siguientes capturas se muestran aquí mismo para que la evidencia principal pueda revisarse desde el README. La descripción completa y las limitaciones están en [`EVIDENCIAS.md`](EVIDENCIAS.md).
+
+<table>
+  <tr>
+    <td align="center"><strong>Fotos locales pendientes</strong><br><img src="assets/screenshots/14.png" width="260" alt="Biblioteca local con dos fotos pendientes de sincronizar"></td>
+    <td align="center"><strong>Sincronización completada</strong><br><img src="assets/screenshots/15.png" width="260" alt="Resultado de sincronización con dos fotos subidas"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Fotos en Tu nube</strong><br><img src="assets/screenshots/16.png" width="260" alt="Feed de nube con dos fotos respaldadas"></td>
+    <td align="center"><strong>Feed paginado: 33 fotos y fin de lista</strong><br><img src="assets/screenshots/17.png" width="260" alt="Feed de nube con 33 respaldos y mensaje Has llegado al final"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Sincronización: 33 subidas y 2 borradas</strong><br><img src="assets/screenshots/18.png" width="260" alt="Resultado de sincronización con cero descargas, 33 subidas y 2 borradas"></td>
+    <td align="center"><strong>Alcance de la evidencia</strong><br>Las capturas muestran el resultado en un teléfono. La descarga y propagación de borrados entre dispositivos aún deben probarse.</td>
+  </tr>
+</table>
+
 ### Arquitectura de sincronización
 
 ```mermaid
